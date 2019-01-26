@@ -18,7 +18,7 @@ namespace myns {
     template<typename Ret, typename ... Args>
     class function<Ret(Args...)> {
     private:
-        static unsigned const int BUFFER_SIZE = 32;
+        static unsigned const int BUFFER_SIZE = 1;
         struct callable;
         using SmallT = std::array<std::byte, BUFFER_SIZE>;
         using BigT = std::unique_ptr<callable>;
@@ -37,24 +37,23 @@ namespace myns {
 
         function(const function &other) noexcept {
             if (other.is_small()) {
-                other.get_small()->small_copy(std::get<SmallT>(holder).data());
+                other.get_small()->small_copy(std::get<SmallT>(other.holder).data());
             } else {
-                holder = std::get<BigT>(holder)->big_copy();
+                holder = std::get<BigT>(other.holder)->big_copy();
             }
         }
 
         function(function &&other) noexcept {
+            holder = nullptr;
             swap(other);
         }
 
         template<class FuncT>
         function(FuncT function) {
-            SmallT s;
-            if (sizeof(callableFunctor < FuncT > ) <= BUFFER_SIZE) {
+            if (sizeof(callableFunctor<FuncT> ) <= BUFFER_SIZE) {
                 new(std::get<SmallT>(holder).data()) callableFunctor<FuncT>(std::move(function));
             } else {
-                holder = std::make_unique<callableFunctor < FuncT>>
-                (std::move(function));
+                holder = std::make_unique<callableFunctor<FuncT>>(std::move(function));
             }
         }
 
@@ -64,7 +63,11 @@ namespace myns {
             return *this;
         }
 
-        ~function() = default;
+        ~function(){
+            if (is_small()) {
+                get_small()->~callable();
+            }
+        }
 
         function &operator=(function &&other) noexcept {
             swap(other);
@@ -100,26 +103,30 @@ namespace myns {
 
             virtual Ret call(Args &&...args) = 0;
 
-            virtual std::unique_ptr<callable> big_copy() = 0;
+            virtual std::unique_ptr<callable> big_copy() const = 0;
 
-            virtual void small_copy(std::byte *buffer) = 0;
+            virtual void small_copy(std::byte *buffer) const = 0;
         };
 
         template<typename FuncT>
         struct callableFunctor : public callable {
-            callableFunctor(FuncT function) : callable(), currFunction(function) {}
+            callableFunctor(FuncT && function) : currFunction(std::move(function)) {}
+
+            callableFunctor(FuncT const &function) : currFunction(function) {}
+
 
             virtual Ret call(Args &&...args) {
                 return currFunction(std::forward<Args>(args)...);
             }
 
+
             virtual ~callableFunctor() {}
 
-            std::unique_ptr<callable> big_copy() override {
+            std::unique_ptr<callable> big_copy() const override {
                 return std::make_unique<callableFunctor<FuncT>>(currFunction);
             }
 
-            void small_copy(std::byte *buffer) override {
+            void small_copy(std::byte *buffer) const override {
                 new(buffer)callableFunctor<FuncT>(currFunction);
             }
 

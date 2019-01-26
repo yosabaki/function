@@ -140,6 +140,27 @@ void NIKITOZZZZ_test() {
     f(std::cout);
 }
 
+void ignat_test() {
+    struct foo {
+        int *ptr;
+        int x;
+        foo(int x) : x{x}
+        {
+            ptr = &this->x;
+        }
+        foo(const foo &other) : foo(other.x) { }
+
+        int operator()(int arg) {
+            return *ptr + arg;
+        }
+    };
+    std::function<int(int)> f = foo(42);
+    std::function<int(int)> f2 = foo(0);
+    f.swap(f2);
+    assert(f(228) == 228);
+    assert(f2(228) == 270);
+}
+
 
 void all_test() {
     test_defaultConstructor();
@@ -155,10 +176,37 @@ void all_test() {
     test_copy_small_object();
     test_copy();
     NIKITOZZZZ_test();
+    ignat_test();
     std::cout << "OK!";
 }
 
+struct test_t{
+    test_t(const test_t &) {
+        std::cout<<"Copy constructor\n";
+    }
+
+    test_t(test_t &&) {
+        std::cout<<"Move constructor\n";
+    }
+
+    test_t() {
+        std::cout<<"Default constructor\n";
+    }
+
+    ~test_t(){
+        std::cout<<"Destructor\n";
+    }
+    void operator()() {
+        std::cout<<"Call\n";
+    }
+};
+
+
+
+
 int main() {
     all_test();
+    myns::function<void()> f = test_t();
+    f();
     return 0;
 }
