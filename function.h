@@ -37,7 +37,7 @@ namespace myns {
 
         function(const function &other) noexcept {
             if (other.is_small()) {
-                other.get_small()->small_copy(std::get<SmallT>(other.holder).data());
+                other.get_small()->small_copy(std::get<SmallT>(holder).data());
             } else {
                 holder = std::get<BigT>(other.holder)->big_copy();
             }

@@ -206,7 +206,8 @@ struct test_t{
 
 int main() {
     all_test();
-    myns::function<void()> f = test_t();
+    test_t t;
+    myns::function<void()> f = t;
     f();
     return 0;
 }
