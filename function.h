@@ -18,7 +18,7 @@ namespace myns {
     template<typename Ret, typename ... Args>
     class function<Ret(Args...)> {
     private:
-        static unsigned const int BUFFER_SIZE = 1;
+        static unsigned const int BUFFER_SIZE = 32;
         struct callable;
         using SmallT = std::array<std::byte, BUFFER_SIZE>;
         using BigT = std::unique_ptr<callable>;
@@ -35,7 +35,7 @@ namespace myns {
             return is_small() || std::get<BigT>(holder) != nullptr;
         }
 
-        function(const function &other) noexcept {
+        function(const function &other) {
             if (other.is_small()) {
                 other.get_small()->small_copy(std::get<SmallT>(holder).data());
             } else {
@@ -44,16 +44,22 @@ namespace myns {
         }
 
         function(function &&other) noexcept {
-            holder = nullptr;
-            swap(other);
+            if (other.is_small()) {
+                other.get_small()->move(std::get<SmallT>(holder).data());
+                other.holder = nullptr;
+            } else {
+                holder = nullptr;
+                holder.swap(other.holder);
+            }
         }
 
         template<class FuncT>
         function(FuncT function) {
-            if (sizeof(callableFunctor<FuncT> ) <= BUFFER_SIZE) {
+            if (sizeof(callableFunctor < FuncT > ) <= BUFFER_SIZE) {
                 new(std::get<SmallT>(holder).data()) callableFunctor<FuncT>(std::move(function));
             } else {
-                holder = std::make_unique<callableFunctor<FuncT>>(std::move(function));
+                holder = std::make_unique<callableFunctor < FuncT>>
+                (std::move(function));
             }
         }
 
@@ -63,19 +69,40 @@ namespace myns {
             return *this;
         }
 
-        ~function(){
+        ~function() {
             if (is_small()) {
                 get_small()->~callable();
             }
         }
 
         function &operator=(function &&other) noexcept {
-            swap(other);
+            if (is_small()) {
+                if (other.is_small()) {
+                    get_small()->~callable();
+                    other.get_small()->move(std::get<SmallT>(holder).data());
+                    other.holder = nullptr;
+                } else {
+                    get_small()->~callable();
+                    std::get<BigT>(other.holder)->move(std::get<SmallT>(holder).data());
+                    other.holder = nullptr;
+                }
+            } else {
+                if (other.is_small()) {
+                    std::get<BigT>(holder).release();
+                    holder = SmallT();
+                    other.get_small()->move(std::get<SmallT>(holder).data());
+                    other.holder = nullptr;
+                } else {
+                    holder.swap(other.holder);
+                }
+            }
             return *this;
         }
 
         void swap(function &other) noexcept {
-            holder.swap(other.holder);
+            function tmp(std::move(other));
+            other = std::move(*this);
+            *this = std::move(tmp);
         };
 
         Ret operator()(Args &&... args) const {
@@ -106,14 +133,20 @@ namespace myns {
             virtual std::unique_ptr<callable> big_copy() const = 0;
 
             virtual void small_copy(std::byte *buffer) const = 0;
+
+            virtual void move(std::byte *buffer) = 0;
         };
 
         template<typename FuncT>
         struct callableFunctor : public callable {
-            callableFunctor(FuncT && function) : currFunction(std::move(function)) {}
+
+            callableFunctor(FuncT &&function) : currFunction(std::move(function)) {}
 
             callableFunctor(FuncT const &function) : currFunction(function) {}
 
+            virtual void move(std::byte *buffer) {
+                new(buffer) callableFunctor<FuncT>(std::move(*this));
+            }
 
             virtual Ret call(Args &&...args) {
                 return currFunction(std::forward<Args>(args)...);
